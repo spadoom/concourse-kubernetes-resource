@@ -71,25 +71,16 @@ ls /root/.kube 2>/dev/null || echo '/root/.kube does not exist'
 mkdir -p /root/.kube
 
 KUBE_URL=$(jq -r .source.cluster_url < "$payload")
+KUBE_USER=$(jq -r .source.cluster_user < "$payload")
+KUBE_PW=$(jq -r .source.cluster_pw < "$payload")
 NAMESPACE=$(jq -r .source.namespace < "$payload")
+CLUSTER_NAME=${NAMESPACE}-cluster
 
-KUBECTL="/usr/local/bin/kubectl --server=$KUBE_URL --namespace=$NAMESPACE"
+KUBECTL="/usr/local/bin/kubectl --namespace=$NAMESPACE"
 
-# configure SSL Certs if available
-if [[ "$KUBE_URL" =~ https.* ]]; then
-    KUBE_CA=$(jq -r .source.cluster_ca < "$payload")
-    KUBE_KEY=$(jq -r .source.admin_key < "$payload")
-    KUBE_CERT=$(jq -r .source.admin_cert < "$payload")
-    CA_PATH="/root/.kube/ca.pem"
-    KEY_PATH="/root/.kube/key.pem"
-    CERT_PATH="/root/.kube/cert.pem"
-
-    echo "$KUBE_CA" | base64 -d > $CA_PATH
-    echo "$KUBE_KEY" | base64 -d > $KEY_PATH
-    echo "$KUBE_CERT" | base64 -d > $CERT_PATH
-
-    KUBECTL="$KUBECTL --certificate-authority=$CA_PATH --client-key=$KEY_PATH --client-certificate=$CERT_PATH"
-fi
+kubectl config set-cluster ${KUBE_URL} --server=${KUBE_URL} --insecure-skip-tls-verify
+kubectl config set-credentials ${CLUSTER_NAME} --username=${KUBE_USER} --password=${KUBE_PW}
+kubectl config set-context ${CLUSTER_NAME} --cluster=${CLUSTER_NAME}
 
 export KUBECTL
 
@@ -112,34 +103,35 @@ if [[ "$RESOURCE_TYPE" = 'deployment' ]]; then
     else
         case $RESOURCE_TYPE in
             deployment)
-            RESOURCE_PATH=$(jq -r .params.resource_path < "$payload")
-            CONTAINER_NAME=$(jq -r .source.container_name < "$payload")
-            DEPLOYMENT_PATH=$(jq -r .source.deployment_file < "$payload")
-            IMG_PREFIX=$(jq -r .source.image_prefix < "$payload")
+                RESOURCE_PATH=$(jq -r .params.resource_path < "$payload")
+                CONTAINER_NAME=$(jq -r .source.container_name < "$payload")
+                DEPLOYMENT_PATH=$(jq -r .source.deployment_file < "$payload")
+                IMG_PREFIX=$(jq -r .source.image_prefix < "$payload")
 
-            if [[ "$DEPLOYMENT_PATH" == "null" ]]; then
-                DEPLOYMENT_PATH=$(jq -r .params.deployment_file < "$payload")
-            fi
+                if [[ "$DEPLOYMENT_PATH" == "null" ]]; then
+                    DEPLOYMENT_PATH=$(jq -r .params.deployment_file < "$payload")
+                fi
 
-            if [[ "$IMG_PREFIX" == "null" ]]; then
-                IMG_PREFIX=$(jq -r .params.image_prefix < "$payload")
-            fi
+                if [[ "$IMG_PREFIX" == "null" ]]; then
+                    IMG_PREFIX=$(jq -r .params.image_prefix < "$payload")
+                fi
 
-            if [[ "$CONTAINER_NAME" == "null" ]]; then
-              CONTAINER_NAME=$RESOURCE_NAME
-            fi
+                if [[ "$CONTAINER_NAME" == "null" ]]; then
+                  CONTAINER_NAME=$RESOURCE_NAME
+                fi
 
-            IMG_FILE=$(jq -r .params.image_name < "$payload")
-            IMG=$(cat "$IMG_FILE")
-            TAG_FILE=$(jq -r .params.image_tag < "$payload")
-            TAG=$(cat "$TAG_FILE")
-            IMG="$IMG:$TAG"
+                IMG_FILE=$(jq -r .params.image_name < "$payload")
+                IMG=$(cat "$IMG_FILE")
+                TAG_FILE=$(jq -r .params.image_tag < "$payload")
+                TAG=$(cat "$TAG_FILE")
+                IMG="$IMG:$TAG"
 
-            deploy "$RESOURCE_NAME" "$CONTAINER_NAME" "$IMG" "$DEPLOYMENT_PATH" "$IMG_PREFIX" "$DRY_RUN";;
+                deploy "$RESOURCE_NAME" "$CONTAINER_NAME" "$IMG" "$DEPLOYMENT_PATH" "$IMG_PREFIX" "$DRY_RUN";;
+
             job)
-            start_job "$RESOURCE_PATH" "$IMG" "$(date +%s)" "$DRY_RUN";;
+                start_job "$RESOURCE_PATH" "$IMG" "$(date +%s)" "$DRY_RUN";;
             *)
-            exit 1
+                exit 1
         esac
     fi
 fi
